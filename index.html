@@ -144,6 +144,8 @@ body {
   font-size: 14px; font-weight: 600; padding: 11px 4px; cursor: pointer;
 }
 .seg-btn.active { background: var(--surface2); color: var(--text); }
+.sub-seg { margin-top: 10px; }
+.seg-count { display: block; font-size: 12px; font-weight: 500; margin-top: 2px; }
 .range-inputs { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--text-dim); }
 .range-inputs input {
   flex: 1; background: var(--surface); border: 1px solid var(--border);
@@ -355,10 +357,17 @@ body {
           <button class="seg-btn" data-range="unlearned">覚えてない</button>
           <button class="seg-btn" data-range="custom">番号指定</button>
         </div>
-        <div id="cards-range-custom" class="range-inputs hidden">
-          <input type="number" id="cards-from" inputmode="numeric" placeholder="1" min="1">
-          <span>〜</span>
-          <input type="number" id="cards-to" inputmode="numeric" placeholder="100" min="1">
+        <div id="cards-range-custom" class="hidden">
+          <div class="range-inputs">
+            <input type="number" id="cards-from" inputmode="numeric" placeholder="1" min="1">
+            <span>〜</span>
+            <input type="number" id="cards-to" inputmode="numeric" placeholder="100" min="1">
+          </div>
+          <div class="segmented sub-seg" id="cards-status-seg">
+            <button class="seg-btn active" data-status="all">すべて<span class="seg-count"></span></button>
+            <button class="seg-btn" data-status="unlearned">覚えてない<span class="seg-count"></span></button>
+            <button class="seg-btn" data-status="known">覚えた<span class="seg-count"></span></button>
+          </div>
         </div>
         <button class="btn btn-primary btn-block" onclick="Cards.start()">はじめる</button>
         <p id="cards-setup-msg" class="hint-text"></p>
@@ -412,10 +421,17 @@ body {
           <button class="seg-btn" data-range="unlearned">覚えてない</button>
           <button class="seg-btn" data-range="custom">番号指定</button>
         </div>
-        <div id="quiz-range-custom" class="range-inputs hidden">
-          <input type="number" id="quiz-from" inputmode="numeric" placeholder="1" min="1">
-          <span>〜</span>
-          <input type="number" id="quiz-to" inputmode="numeric" placeholder="100" min="1">
+        <div id="quiz-range-custom" class="hidden">
+          <div class="range-inputs">
+            <input type="number" id="quiz-from" inputmode="numeric" placeholder="1" min="1">
+            <span>〜</span>
+            <input type="number" id="quiz-to" inputmode="numeric" placeholder="100" min="1">
+          </div>
+          <div class="segmented sub-seg" id="quiz-status-seg">
+            <button class="seg-btn active" data-status="all">すべて<span class="seg-count"></span></button>
+            <button class="seg-btn" data-status="unlearned">覚えてない<span class="seg-count"></span></button>
+            <button class="seg-btn" data-status="known">覚えた<span class="seg-count"></span></button>
+          </div>
         </div>
         <div class="field-label">問題数</div>
         <div class="segmented" id="quiz-count-seg">
@@ -556,15 +572,19 @@ var EWLogic = (function () {
     return r;
   }
 
+  // range: 'all' | 'unlearned' | { from, to, status }（status: 'all' | 'unlearned' | 'known'）
   function filterRange(words, records, range) {
     var ids = [];
     for (var i = 0; i < words.length; i++) {
       var w = words[i];
+      var rec = records && records[w.id];
+      var known = !!(rec && rec.status === 'known');
       if (range === 'unlearned') {
-        var rec = records && records[w.id];
-        if (rec && rec.status === 'known') continue;
+        if (known) continue;
       } else if (range && typeof range === 'object') {
         if (w.id < range.from || w.id > range.to) continue;
+        if (range.status === 'unlearned' && known) continue;
+        if (range.status === 'known' && !known) continue;
       }
       ids.push(w.id);
     }
@@ -978,15 +998,41 @@ function segValue(segId, attr) {
   var active = document.querySelector('#' + segId + ' .seg-btn.active');
   return active ? active.getAttribute(attr) : null;
 }
-function readRange(segId, fromId, toId, total) {
+function readFromTo(fromId, toId, total) {
+  var from = parseInt(document.getElementById(fromId).value, 10) || 1;
+  var to = parseInt(document.getElementById(toId).value, 10) || total;
+  if (from > to) { var t = from; from = to; to = t; }
+  return { from: from, to: to };
+}
+function readRange(segId, fromId, toId, total, statusSegId) {
   var v = segValue(segId, 'data-range');
   if (v === 'custom') {
-    var from = parseInt(document.getElementById(fromId).value, 10) || 1;
-    var to = parseInt(document.getElementById(toId).value, 10) || total;
-    if (from > to) { var t = from; from = to; to = t; }
-    return { from: from, to: to };
+    var r = readFromTo(fromId, toId, total);
+    if (statusSegId) r.status = segValue(statusSegId, 'data-status') || 'all';
+    return r;
   }
   return v;
+}
+
+// 番号指定の中を「すべて／覚えてない／覚えた」で絞る切替（prefix: cards / quiz）
+function setupRangeStatus(prefix) {
+  var box = document.getElementById(prefix + '-range-custom');
+  if (!box.dataset.bound) {
+    box.dataset.bound = '1';
+    setupSegmented(prefix + '-status-seg', null);
+    box.addEventListener('input', function () { updateRangeCounts(prefix); });
+  }
+  updateRangeCounts(prefix);
+}
+function updateRangeCounts(prefix) {
+  var words = App.state.words, records = App.state.records;
+  var r = readFromTo(prefix + '-from', prefix + '-to', words.length);
+  var btns = document.querySelectorAll('#' + prefix + '-status-seg .seg-btn');
+  for (var i = 0; i < btns.length; i++) {
+    var status = btns[i].getAttribute('data-status');
+    var n = EWLogic.filterRange(words, records, { from: r.from, to: r.to, status: status }).length;
+    btns[i].querySelector('.seg-count').textContent = n + '語';
+  }
 }
 </script>
 
@@ -1000,6 +1046,7 @@ var Cards = (function () {
 
   function init() {
     setupSegmented('cards-range-seg', 'cards-range-custom');
+    setupRangeStatus('cards');
     showPanel('setup');
   }
 
@@ -1010,7 +1057,7 @@ var Cards = (function () {
   }
 
   function start() {
-    var range = readRange('cards-range-seg', 'cards-from', 'cards-to', App.state.words.length);
+    var range = readRange('cards-range-seg', 'cards-from', 'cards-to', App.state.words.length, 'cards-status-seg');
     var ids = EWLogic.filterRange(App.state.words, App.state.records, range);
     if (!ids.length) {
       document.getElementById('cards-setup-msg').textContent = '対象の単語がありません。範囲を変えてください。';
@@ -1095,6 +1142,7 @@ var Quiz = (function () {
 
   function init() {
     setupSegmented('quiz-range-seg', 'quiz-range-custom');
+    setupRangeStatus('quiz');
     setupSegmented('quiz-count-seg', null);
     var list = document.getElementById('quiz-format-list');
     if (!list.dataset.bound) {
@@ -1120,7 +1168,7 @@ var Quiz = (function () {
 
   function start() {
     var format = document.querySelector('#quiz-format-list .format-btn.active').getAttribute('data-format');
-    var range = readRange('quiz-range-seg', 'quiz-from', 'quiz-to', App.state.words.length);
+    var range = readRange('quiz-range-seg', 'quiz-from', 'quiz-to', App.state.words.length, 'quiz-status-seg');
     var count = parseInt(segValue('quiz-count-seg', 'data-count'), 10);
     questions = EWLogic.buildQuiz(App.state.words, App.state.records, { format: format, range: range, count: count });
     if (!questions.length) {
