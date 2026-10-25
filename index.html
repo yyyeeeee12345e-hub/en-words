@@ -175,11 +175,6 @@ body {
 .card-word.small { font-size: 22px; color: var(--text-dim); }
 .tap-hint { margin-top: 18px; font-size: 13px; color: var(--text-dim); }
 .card-ja { font-size: 22px; font-weight: 700; margin-top: 6px; }
-.card-other { margin-top: 10px; font-size: 15px; color: var(--text-dim); line-height: 1.6; }
-.other-label {
-  display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent);
-  border: 1px solid var(--accent); border-radius: 6px; padding: 0 6px; margin-right: 6px; vertical-align: 1px;
-}
 .card-example {
   margin-top: 16px; padding: 12px 14px; text-align: left;
   background: var(--surface2); border-radius: 12px;
@@ -390,10 +385,6 @@ body {
           <div id="card-back" class="card-face hidden">
             <div id="card-word-back" class="card-word small"></div>
             <div id="card-ja" class="card-ja"></div>
-            <div id="card-other" class="card-other hidden">
-              <span class="other-label">他の意味</span>
-              <span id="card-other-text"></span>
-            </div>
             <div class="card-example">
               <div id="card-ex-en" class="ex-en"></div>
               <div id="card-ex-ja" class="ex-ja"></div>
@@ -1097,9 +1088,8 @@ var Cards = (function () {
     document.getElementById('cards-counter').textContent = (index + 1) + ' / ' + queue.length;
     document.getElementById('card-word').textContent = w.en;
     document.getElementById('card-word-back').textContent = w.en;
-    document.getElementById('card-ja').textContent = w.ja;
-    document.getElementById('card-other-text').textContent = w.other || '';
-    document.getElementById('card-other').classList.toggle('hidden', !w.other);
+    // 他の意味は本来の訳に続けて同じ大きさで並べる
+    document.getElementById('card-ja').textContent = w.other ? w.ja + '；' + w.other : w.ja;
     document.getElementById('card-ex-en').textContent = w.exEn;
     document.getElementById('card-ex-ja').textContent = w.exJa;
     var audioRow = document.getElementById('card-audio');
